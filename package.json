@@ -1,0 +1,19 @@
+{
+  "name": "stripe-webhook-server",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "webhook-server.js",
+  "scripts": {
+    "start": "node webhook-server.js",
+    "dev": "node webhook-server.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "stripe": "^18.3.0",
+    "@supabase/supabase-js": "^2.52.1",
+    "dotenv": "^16.6.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+} 
