@@ -1,0 +1,3 @@
+# Explicitly allow .env files for AI/code features in this project
+!.env
+!.env.*
