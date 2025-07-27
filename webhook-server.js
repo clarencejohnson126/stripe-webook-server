@@ -69,8 +69,60 @@ app.post("/webhook", async (req, res) => {
 
   // Only process checkout.session.completed events
   if (event.type === 'checkout.session.completed') {
-    // Insert order to Supabase and send email (add your logic here)
-    console.log('✅ Stripe checkout.session.completed:', event.data.object);
+    const session = event.data.object;
+    console.log(`💰 [${requestId}] Processing completed checkout session: ${session.id}`);
+
+    try {
+      // Build the order data (adapt fields as needed)
+      const orderData = {
+        // You must map fields from the Stripe session metadata or line_items to your table schema
+        user_email: session.customer_details?.email || session.customer_email,
+        binding_type: session.metadata?.bindingType,
+        price: session.amount_total / 100,
+        status: 'paid',
+        payment_status: session.payment_status,
+        amount: session.amount_total,
+        currency: session.currency,
+        stripe_session_id: session.id,
+        created_at: new Date().toISOString(),
+        // Extract metadata fields
+        binding_name: session.metadata?.bindingName || null,
+        format: session.metadata?.format || null,
+        paper_weight: session.metadata?.paperWeight || null,
+        printing_option: session.metadata?.printingOption || null,
+        page_count: session.metadata?.pageCount ? parseInt(session.metadata.pageCount) : null,
+        total_price: session.metadata?.totalPrice ? parseFloat(session.metadata.totalPrice) : null,
+        payment_method: session.metadata?.paymentMethod || null,
+        // Additional fields
+        customer_name: session.customer_details?.name || null,
+        customer_address: session.customer_details?.address ? JSON.stringify(session.customer_details.address) : null,
+        customer_phone: session.customer_details?.phone || null
+      };
+
+      console.log(`📊 [${requestId}] Order data prepared:`, orderData);
+
+      // Insert to Supabase
+      const { data, error } = await supabase
+        .from('orders')
+        .insert([orderData]);
+
+      if (error) {
+        console.error(`❌ [${requestId}] Supabase insert error:`, error.message);
+        throw new Error(`Supabase insert failed: ${error.message}`);
+      } else {
+        console.log(`✅ [${requestId}] Order inserted to Supabase:`, data);
+      }
+
+      // Send confirmation email via Resend
+      const emailResult = await sendConfirmationEmail(orderData, requestId);
+      console.log(`📧 [${requestId}] Email sent:`, emailResult);
+
+      console.log(`🎉 [${requestId}] Webhook processing completed successfully`);
+
+    } catch (error) {
+      console.error(`❌ [${requestId}] Error processing webhook:`, error);
+      // Still return 200 to Stripe to prevent retries
+    }
   } else {
     console.log(`ℹ️ [${requestId}] Ignoring event type: ${event.type}`);
   }
@@ -82,32 +134,11 @@ app.post("/webhook", async (req, res) => {
 // Send confirmation email function
 async function sendConfirmationEmail(orderData, requestId) {
   try {
-    const emailContent = `
-      <h2>Vielen Dank für Ihre Bestellung bei POCAT!</h2>
-      <p>Ihre Bestellung wurde erfolgreich verarbeitet.</p>
-      
-      <h3>Bestelldetails:</h3>
-      <ul>
-        <li><strong>Bindung:</strong> ${orderData.binding_name || 'N/A'}</li>
-        <li><strong>Format:</strong> ${orderData.format || 'N/A'}</li>
-        <li><strong>Papiergewicht:</strong> ${orderData.paper_weight || 'N/A'}</li>
-        <li><strong>Druckoption:</strong> ${orderData.printing_option || 'N/A'}</li>
-        <li><strong>Seitenanzahl:</strong> ${orderData.page_count || 'N/A'}</li>
-        <li><strong>Gesamtpreis:</strong> ${(orderData.amount / 100).toFixed(2)} €</li>
-        <li><strong>Zahlungsstatus:</strong> ${orderData.payment_status}</li>
-      </ul>
-      
-      <p>Wir werden Ihre Bestellung so schnell wie möglich bearbeiten.</p>
-      <p>Bei Fragen erreichen Sie uns unter: info@pocat.de</p>
-      
-      <p>Mit freundlichen Grüßen,<br>Ihr POCAT Team</p>
-    `;
-
     const { data, error } = await resend.emails.send({
-      from: 'info@pocat.de',
+      from: 'info@pocat.de', // Your domain email
       to: orderData.user_email,
-      subject: 'Bestellbestätigung - POCAT',
-      html: emailContent
+      subject: 'Danke für deine Bestellung',
+      html: '<h1>Danke für deine Bestellung!</h1><p>Dein Auftrag wurde erfolgreich übermittelt.</p>',
     });
 
     if (error) {
