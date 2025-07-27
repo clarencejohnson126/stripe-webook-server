@@ -37,6 +37,15 @@ const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SE
   : null;
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
+// Log service initialization
+console.log('🔧 Service initialization:');
+console.log('  Stripe:', !!stripe);
+console.log('  Supabase:', !!supabase);
+console.log('  Resend:', !!resend);
+console.log('  Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL);
+console.log('  Supabase Key (first 20 chars):', process.env.SUPABASE_SERVICE_ROLE_KEY ? process.env.SUPABASE_SERVICE_ROLE_KEY.substring(0, 20) + '...' : 'NOT SET');
+console.log('  Resend Key (first 20 chars):', process.env.RESEND_API_KEY ? process.env.RESEND_API_KEY.substring(0, 20) + '...' : 'NOT SET');
+
 // Webhook endpoint
 app.post("/webhook", async (req, res) => {
   const requestId = Math.random().toString(36).substring(7);
@@ -71,8 +80,15 @@ app.post("/webhook", async (req, res) => {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     console.log(`💰 [${requestId}] Processing completed checkout session: ${session.id}`);
+    console.log(`📋 [${requestId}] Session data:`, JSON.stringify(session, null, 2));
 
     try {
+      // Check if Supabase client is available
+      if (!supabase) {
+        console.error(`❌ [${requestId}] Supabase client not available`);
+        throw new Error('Supabase client not initialized');
+      }
+
       // Build the order data (adapt fields as needed)
       const orderData = {
         // You must map fields from the Stripe session metadata or line_items to your table schema
@@ -99,21 +115,30 @@ app.post("/webhook", async (req, res) => {
         customer_phone: session.customer_details?.phone || null
       };
 
-      console.log(`📊 [${requestId}] Order data prepared:`, orderData);
+      console.log(`📊 [${requestId}] Order data prepared:`, JSON.stringify(orderData, null, 2));
 
       // Insert to Supabase
+      console.log(`🗄️ [${requestId}] Attempting Supabase insert...`);
       const { data, error } = await supabase
         .from('orders')
         .insert([orderData]);
 
       if (error) {
-        console.error(`❌ [${requestId}] Supabase insert error:`, error.message);
+        console.error(`❌ [${requestId}] Supabase insert error:`, error);
+        console.error(`❌ [${requestId}] Error details:`, JSON.stringify(error, null, 2));
         throw new Error(`Supabase insert failed: ${error.message}`);
       } else {
         console.log(`✅ [${requestId}] Order inserted to Supabase:`, data);
       }
 
+      // Check if Resend client is available
+      if (!resend) {
+        console.error(`❌ [${requestId}] Resend client not available`);
+        throw new Error('Resend client not initialized');
+      }
+
       // Send confirmation email via Resend
+      console.log(`📧 [${requestId}] Attempting to send email to: ${orderData.user_email}`);
       const emailResult = await sendConfirmationEmail(orderData, requestId);
       console.log(`📧 [${requestId}] Email sent:`, emailResult);
 
@@ -121,6 +146,7 @@ app.post("/webhook", async (req, res) => {
 
     } catch (error) {
       console.error(`❌ [${requestId}] Error processing webhook:`, error);
+      console.error(`❌ [${requestId}] Error stack:`, error.stack);
       // Still return 200 to Stripe to prevent retries
     }
   } else {
@@ -134,15 +160,22 @@ app.post("/webhook", async (req, res) => {
 // Send confirmation email function
 async function sendConfirmationEmail(orderData, requestId) {
   try {
-    const { data, error } = await resend.emails.send({
+    console.log(`📧 [${requestId}] Preparing email to: ${orderData.user_email}`);
+    
+    const emailPayload = {
       from: 'info@pocat.de', // Your domain email
       to: orderData.user_email,
       subject: 'Danke für deine Bestellung',
       html: '<h1>Danke für deine Bestellung!</h1><p>Dein Auftrag wurde erfolgreich übermittelt.</p>',
-    });
+    };
+    
+    console.log(`📧 [${requestId}] Email payload:`, JSON.stringify(emailPayload, null, 2));
+    
+    const { data, error } = await resend.emails.send(emailPayload);
 
     if (error) {
       console.error(`❌ [${requestId}] Resend email failed:`, error);
+      console.error(`❌ [${requestId}] Email error details:`, JSON.stringify(error, null, 2));
       throw new Error(`Email send failed: ${error.message}`);
     }
 
@@ -151,6 +184,7 @@ async function sendConfirmationEmail(orderData, requestId) {
     
   } catch (error) {
     console.error(`❌ [${requestId}] Email send error:`, error);
+    console.error(`❌ [${requestId}] Email error stack:`, error.stack);
     throw error;
   }
 }
