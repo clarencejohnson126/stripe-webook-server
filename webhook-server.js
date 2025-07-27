@@ -68,59 +68,9 @@ app.post("/webhook", async (req, res) => {
   }
 
   // Only process checkout.session.completed events
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-    console.log(`💰 [${requestId}] Processing completed checkout session: ${session.id}`);
-    
-    try {
-      // Extract order data from session metadata
-      const orderData = {
-        user_email: session.customer_email,
-        payment_status: session.payment_status,
-        amount: session.amount_total,
-        currency: session.currency,
-        stripe_session_id: session.id,
-        created_at: new Date().toISOString(),
-        // Extract metadata fields
-        binding_type: session.metadata?.bindingType || null,
-        binding_name: session.metadata?.bindingName || null,
-        format: session.metadata?.format || null,
-        paper_weight: session.metadata?.paperWeight || null,
-        printing_option: session.metadata?.printingOption || null,
-        page_count: session.metadata?.pageCount ? parseInt(session.metadata.pageCount) : null,
-        total_price: session.metadata?.totalPrice ? parseFloat(session.metadata.totalPrice) : null,
-        payment_method: session.metadata?.paymentMethod || null,
-        // Additional fields
-        customer_name: session.customer_details?.name || null,
-        customer_address: session.customer_details?.address ? JSON.stringify(session.customer_details.address) : null,
-        customer_phone: session.customer_details?.phone || null
-      };
-
-      console.log(`📊 [${requestId}] Order data prepared:`, orderData);
-
-      // Insert into Supabase orders table
-      const { data: insertData, error: insertError } = await supabase
-        .from("orders")
-        .insert([orderData])
-        .select();
-
-      if (insertError) {
-        console.error(`❌ [${requestId}] Supabase insert failed:`, insertError);
-        throw new Error(`Supabase insert failed: ${insertError.message}`);
-      }
-
-      console.log(`✅ [${requestId}] Order inserted into Supabase:`, insertData);
-
-      // Send confirmation email via Resend
-      const emailResult = await sendConfirmationEmail(orderData, requestId);
-      console.log(`📧 [${requestId}] Email sent:`, emailResult);
-
-      console.log(`🎉 [${requestId}] Webhook processing completed successfully`);
-      
-    } catch (error) {
-      console.error(`❌ [${requestId}] Error processing webhook:`, error);
-      // Still return 200 to Stripe to prevent retries
-    }
+  if (event.type === 'checkout.session.completed') {
+    // Insert order to Supabase and send email (add your logic here)
+    console.log('✅ Stripe checkout.session.completed:', event.data.object);
   } else {
     console.log(`ℹ️ [${requestId}] Ignoring event type: ${event.type}`);
   }
