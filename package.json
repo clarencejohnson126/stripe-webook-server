@@ -8,12 +8,13 @@
     "dev": "node webhook-server.js"
   },
   "dependencies": {
-    "express": "^5.1.0",
-    "stripe": "^18.3.0",
     "@supabase/supabase-js": "^2.52.1",
-    "dotenv": "^16.6.1"
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "resend": "^3.5.0",
+    "stripe": "^18.3.0"
   },
   "engines": {
     "node": ">=18.0.0"
   }
-} 
+}
