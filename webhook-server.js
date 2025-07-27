@@ -89,30 +89,31 @@ app.post("/webhook", async (req, res) => {
         throw new Error('Supabase client not initialized');
       }
 
-      // Build the order data (adapt fields as needed)
+      // Build the order data to match the actual orders table structure
       const orderData = {
-        // You must map fields from the Stripe session metadata or line_items to your table schema
-        user_email: session.customer_details?.email || session.customer_email,
-        binding_type: session.metadata?.bindingType,
-        price: session.amount_total / 100,
+        // Required fields from the actual table structure
+        order_reference: `ORD-${Date.now()}-${Math.random().toString(36).substring(7)}`,
         status: 'paid',
-        payment_status: session.payment_status,
-        amount: session.amount_total,
-        currency: session.currency,
+        total_price: session.amount_total / 100,
         stripe_session_id: session.id,
-        created_at: new Date().toISOString(),
-        // Extract metadata fields
-        binding_name: session.metadata?.bindingName || null,
-        format: session.metadata?.format || null,
-        paper_weight: session.metadata?.paperWeight || null,
-        printing_option: session.metadata?.printingOption || null,
-        page_count: session.metadata?.pageCount ? parseInt(session.metadata.pageCount) : null,
-        total_price: session.metadata?.totalPrice ? parseFloat(session.metadata.totalPrice) : null,
-        payment_method: session.metadata?.paymentMethod || null,
-        // Additional fields
-        customer_name: session.customer_details?.name || null,
-        customer_address: session.customer_details?.address ? JSON.stringify(session.customer_details.address) : null,
-        customer_phone: session.customer_details?.phone || null
+        order_config: {
+          // Store all the order details in the JSONB field
+          binding_type: session.metadata?.bindingType,
+          binding_name: session.metadata?.bindingName,
+          format: session.metadata?.format,
+          paper_weight: session.metadata?.paperWeight,
+          printing_option: session.metadata?.printingOption,
+          page_count: session.metadata?.pageCount ? parseInt(session.metadata.pageCount) : null,
+          payment_method: session.metadata?.paymentMethod,
+          customer_email: session.customer_details?.email || session.customer_email,
+          customer_name: session.customer_details?.name,
+          customer_phone: session.customer_details?.phone,
+          payment_status: session.payment_status,
+          currency: session.currency,
+          amount: session.amount_total
+        },
+        shipping_method: session.metadata?.shippingMethod || 'standard',
+        shipping_address: session.customer_details?.address || null
       };
 
       console.log(`📊 [${requestId}] Order data prepared:`, JSON.stringify(orderData, null, 2));
@@ -138,7 +139,8 @@ app.post("/webhook", async (req, res) => {
       }
 
       // Send confirmation email via Resend
-      console.log(`📧 [${requestId}] Attempting to send email to: ${orderData.user_email}`);
+      const customerEmail = orderData.order_config.customer_email;
+      console.log(`📧 [${requestId}] Attempting to send email to: ${customerEmail}`);
       const emailResult = await sendConfirmationEmail(orderData, requestId);
       console.log(`📧 [${requestId}] Email sent:`, emailResult);
 
@@ -160,11 +162,12 @@ app.post("/webhook", async (req, res) => {
 // Send confirmation email function
 async function sendConfirmationEmail(orderData, requestId) {
   try {
-    console.log(`📧 [${requestId}] Preparing email to: ${orderData.user_email}`);
+    const customerEmail = orderData.order_config.customer_email;
+    console.log(`📧 [${requestId}] Preparing email to: ${customerEmail}`);
     
     const emailPayload = {
       from: 'info@pocat.de', // Your domain email
-      to: orderData.user_email,
+      to: customerEmail,
       subject: 'Danke für deine Bestellung',
       html: '<h1>Danke für deine Bestellung!</h1><p>Dein Auftrag wurde erfolgreich übermittelt.</p>',
     };
